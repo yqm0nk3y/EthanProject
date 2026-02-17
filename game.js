@@ -156,6 +156,11 @@ let buildGrid = {};     // sparse map: "x,y,z" -> blockType
 let selectedBlock = "wood";
 let buildBaseMeshes = []; // the floor platform meshes for raycasting
 
+// Rival team build grids - each team gets their own grid + visual meshes
+let rivalGrids = {};        // teamKey -> { grid: {}, meshes: [], platformMeshes: [], offsetX, offsetZ }
+const RIVAL_GRID_COLS = 8;
+const RIVAL_GRID_ROWS = 6;
+
 // Inventory
 let inventory = {};
 const STARTING_INVENTORY = { wood: 30, plank: 20, wood_rod: 15 };
@@ -702,6 +707,9 @@ function setupBuildScene() {
     // Position it to the right of the grid
     launchButtonGroup.position.set(GRID_COLS + 3.5, 0, GRID_ROWS * 0.5);
     buildScene.add(launchButtonGroup);
+
+    // Setup rival team build platforms
+    setupRivalGrids();
 }
 
 // Cached geometries for each shape
@@ -939,6 +947,138 @@ function getAllBlocks() {
         blocks.push({ x, y, z, type: buildGrid[key] });
     }
     return blocks;
+}
+
+// ===== RIVAL TEAM GRIDS =====
+function getRivalBlock(teamKey, x, y, z) {
+    const rg = rivalGrids[teamKey];
+    if (!rg) return null;
+    return rg.grid[gridKey(x, y, z)] || null;
+}
+
+function setRivalBlock(teamKey, x, y, z, type) {
+    const rg = rivalGrids[teamKey];
+    if (!rg) return;
+    if (type) rg.grid[gridKey(x, y, z)] = type;
+    else delete rg.grid[gridKey(x, y, z)];
+}
+
+function getRivalAllBlocks(teamKey) {
+    const rg = rivalGrids[teamKey];
+    if (!rg) return [];
+    const blocks = [];
+    for (let key in rg.grid) {
+        const [x, y, z] = key.split(",").map(Number);
+        blocks.push({ x, y, z, type: rg.grid[key] });
+    }
+    return blocks;
+}
+
+function refreshRivalBlocks(teamKey) {
+    const rg = rivalGrids[teamKey];
+    if (!rg) return;
+    // Remove old block meshes
+    rg.meshes.forEach(m => buildScene.remove(m));
+    rg.meshes = [];
+
+    const blocks = getRivalAllBlocks(teamKey);
+    for (let b of blocks) {
+        const bt = BLOCK_TYPES[b.type];
+        const geo = getBlockGeo(bt.shape || "box");
+        const mat = makeBlockMaterial(bt);
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(
+            rg.offsetX + b.x * BLOCK_SIZE + 0.5,
+            b.y * BLOCK_SIZE + BLOCK_SIZE * 0.5,
+            rg.offsetZ + b.z * BLOCK_SIZE + 0.5
+        );
+        if (bt.shape === "torus" || bt.shape === "spring") {
+            mesh.rotation.x = Math.PI / 2;
+        }
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        buildScene.add(mesh);
+        rg.meshes.push(mesh);
+    }
+}
+
+function setupRivalGrids() {
+    // Clear old rival grids
+    for (let tk in rivalGrids) {
+        const rg = rivalGrids[tk];
+        rg.meshes.forEach(m => buildScene.remove(m));
+        rg.platformMeshes.forEach(m => buildScene.remove(m));
+    }
+    rivalGrids = {};
+
+    if (!playerTeam) return;
+
+    const otherTeams = Object.keys(TEAMS).filter(t => t !== playerTeam);
+    // Position rival grids behind the player's grid, spaced out
+    const spacing = RIVAL_GRID_COLS + 3;
+    const startX = -(spacing * otherTeams.length) / 2 + GRID_COLS * 0.5 - RIVAL_GRID_COLS * 0.5;
+    const baseZ = -(RIVAL_GRID_ROWS + 5); // behind player's grid
+
+    for (let i = 0; i < otherTeams.length; i++) {
+        const tk = otherTeams[i];
+        const team = TEAMS[tk];
+        const offX = startX + i * spacing;
+        const offZ = baseZ;
+
+        rivalGrids[tk] = {
+            grid: {},
+            meshes: [],
+            platformMeshes: [],
+            offsetX: offX,
+            offsetZ: offZ,
+        };
+
+        // Draw the rival platform
+        const cellGeo = new THREE.BoxGeometry(BLOCK_SIZE * 0.95, 0.1, BLOCK_SIZE * 0.95);
+        const hexColor = team.color;
+        const cellMat = new THREE.MeshStandardMaterial({
+            color: hexColor, roughness: 0.7, transparent: true, opacity: 0.25,
+        });
+
+        for (let z = 0; z < RIVAL_GRID_ROWS; z++) {
+            for (let x = 0; x < RIVAL_GRID_COLS; x++) {
+                const cell = new THREE.Mesh(cellGeo, cellMat.clone());
+                cell.position.set(
+                    offX + x * BLOCK_SIZE + 0.5,
+                    0,
+                    offZ + z * BLOCK_SIZE + 0.5
+                );
+                cell.receiveShadow = true;
+                buildScene.add(cell);
+                rivalGrids[tk].platformMeshes.push(cell);
+            }
+        }
+
+        // Team label above the platform
+        const labelCanvas = document.createElement("canvas");
+        labelCanvas.width = 256;
+        labelCanvas.height = 48;
+        const lctx = labelCanvas.getContext("2d");
+        lctx.clearRect(0, 0, 256, 48);
+        lctx.font = "bold 28px 'Segoe UI', Arial, sans-serif";
+        lctx.textAlign = "center";
+        lctx.textBaseline = "middle";
+        const hex = "#" + team.color.toString(16).padStart(6, "0");
+        lctx.fillStyle = hex;
+        lctx.fillText(team.name, 128, 24);
+
+        const labelTex = new THREE.CanvasTexture(labelCanvas);
+        const labelMat = new THREE.SpriteMaterial({ map: labelTex, transparent: true });
+        const labelSprite = new THREE.Sprite(labelMat);
+        labelSprite.scale.set(4, 0.75, 1);
+        labelSprite.position.set(
+            offX + RIVAL_GRID_COLS * 0.5,
+            3,
+            offZ + RIVAL_GRID_ROWS * 0.5
+        );
+        buildScene.add(labelSprite);
+        rivalGrids[tk].platformMeshes.push(labelSprite);
+    }
 }
 
 // ===== UI FUNCTIONS =====
@@ -2068,9 +2208,9 @@ function spawnWaterSplash(dt) {
 }
 
 // ===== BUILD AREA BOTS =====
-function createBuildBot() {
+function createBuildBot(forceTeamKey) {
     const teamKeys = Object.keys(TEAMS);
-    const teamKey = teamKeys[Math.floor(Math.random() * teamKeys.length)];
+    const teamKey = forceTeamKey || teamKeys[Math.floor(Math.random() * teamKeys.length)];
     const team = TEAMS[teamKey];
     const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
 
@@ -2122,6 +2262,10 @@ function createBuildBot() {
 
     group.position.set(startX, 0, startZ);
 
+    // Pick which block types this bot likes to place
+    const botBlockTypes = ["wood", "plank", "wood_rod", "brick", "stone", "rubber", "hay", "barrel", "cork"];
+    const favBlock = botBlockTypes[Math.floor(Math.random() * botBlockTypes.length)];
+
     const bot = {
         group: group,
         parts: model.parts,
@@ -2137,11 +2281,19 @@ function createBuildBot() {
         targetX: startX,
         targetZ: startZ,
         waitTimer: 0,
-        state: "idle",  // "idle", "walking", "looking"
+        state: "idle",  // "idle", "walking", "building", "looking"
         stateTimer: 0,
         // Jump occasionally
         vy: 0,
         grounded: true,
+        // Building AI
+        favBlock: favBlock,
+        buildTargetX: -1,
+        buildTargetY: 0,
+        buildTargetZ: -1,
+        buildCooldown: 1.5 + Math.random() * 3, // seconds before first build attempt
+        blocksPlaced: 0,
+        maxBlocks: 3 + Math.floor(Math.random() * 5), // each bot places 3-7 blocks
     };
 
     pickNewBotTarget(bot);
@@ -2149,18 +2301,88 @@ function createBuildBot() {
 }
 
 function pickNewBotTarget(bot) {
-    // Pick a random point around the build area
-    bot.targetX = -2 + Math.random() * (GRID_COLS + 8);
-    bot.targetZ = -2 + Math.random() * (GRID_ROWS + 5);
+    const isTeammate = playerTeam && bot.teamKey === playerTeam;
+    if (isTeammate || !rivalGrids[bot.teamKey]) {
+        // Teammate or no rival grid: wander near player's build area
+        bot.targetX = -2 + Math.random() * (GRID_COLS + 8);
+        bot.targetZ = -2 + Math.random() * (GRID_ROWS + 5);
+    } else {
+        // Rival: wander near their own platform
+        const rg = rivalGrids[bot.teamKey];
+        bot.targetX = rg.offsetX - 2 + Math.random() * (RIVAL_GRID_COLS + 4);
+        bot.targetZ = rg.offsetZ - 2 + Math.random() * (RIVAL_GRID_ROWS + 4);
+    }
+}
+
+function pickBotBuildSpot(bot) {
+    const isTeammate = playerTeam && bot.teamKey === playerTeam;
+    const cols = isTeammate ? GRID_COLS : RIVAL_GRID_COLS;
+    const rows = isTeammate ? GRID_ROWS : RIVAL_GRID_ROWS;
+    const getBlockFn = isTeammate ? getBlock : (x, y, z) => getRivalBlock(bot.teamKey, x, y, z);
+    const existingBlocks = isTeammate ? getAllBlocks() : getRivalAllBlocks(bot.teamKey);
+
+    if (existingBlocks.length > 0 && Math.random() < 0.6) {
+        // Try to build adjacent to an existing block (expand the boat)
+        const shuffled = existingBlocks.sort(() => Math.random() - 0.5);
+        for (let b of shuffled) {
+            const offsets = [
+                { dx: 1, dy: 0, dz: 0 }, { dx: -1, dy: 0, dz: 0 },
+                { dx: 0, dy: 0, dz: 1 }, { dx: 0, dy: 0, dz: -1 },
+                { dx: 0, dy: 1, dz: 0 },
+            ];
+            for (let off of offsets.sort(() => Math.random() - 0.5)) {
+                const nx = b.x + off.dx;
+                const ny = b.y + off.dy;
+                const nz = b.z + off.dz;
+                if (nx >= 0 && nx < cols && nz >= 0 && nz < rows && ny >= 0 && ny < 6) {
+                    if (!getBlockFn(nx, ny, nz)) {
+                        return { x: nx, y: ny, z: nz };
+                    }
+                }
+            }
+        }
+    }
+
+    // Place on the base layer at a random empty spot
+    for (let attempt = 0; attempt < 20; attempt++) {
+        const rx = Math.floor(Math.random() * cols);
+        const rz = Math.floor(Math.random() * rows);
+        if (!getBlockFn(rx, 0, rz)) {
+            return { x: rx, y: 0, z: rz };
+        }
+    }
+    return null; // grid is full
 }
 
 function spawnBuildBots() {
     cleanupBuildBots();
-    const botCount = 5 + Math.floor(Math.random() * 4); // 5-8 bots
-    for (let i = 0; i < botCount; i++) {
-        const bot = createBuildBot();
+    if (!playerTeam) {
+        // No team yet, just spawn random wanderers
+        for (let i = 0; i < 6; i++) {
+            const bot = createBuildBot();
+            buildScene.add(bot.group);
+            buildBots.push(bot);
+        }
+        return;
+    }
+
+    // Spawn 2-3 teammates
+    const teammateCount = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < teammateCount; i++) {
+        const bot = createBuildBot(playerTeam);
         buildScene.add(bot.group);
         buildBots.push(bot);
+    }
+
+    // Spawn 2 bots for each rival team so they build their boats
+    const otherTeams = Object.keys(TEAMS).filter(t => t !== playerTeam);
+    for (let tk of otherTeams) {
+        const count = 2;
+        for (let i = 0; i < count; i++) {
+            const bot = createBuildBot(tk);
+            buildScene.add(bot.group);
+            buildBots.push(bot);
+        }
     }
 }
 
@@ -2174,6 +2396,7 @@ function cleanupBuildBots() {
 function updateBuildBots(dt) {
     for (let bot of buildBots) {
         bot.stateTimer -= dt;
+        bot.buildCooldown -= dt;
 
         if (bot.state === "idle") {
             // Standing still, maybe looking around
@@ -2193,10 +2416,124 @@ function updateBuildBots(dt) {
             }
 
             if (bot.stateTimer <= 0) {
-                // Start walking to a new target
+                // Decide: go build or just wander?
+                const isTeammate = playerTeam && bot.teamKey === playerTeam;
+                const canBuild = isTeammate || rivalGrids[bot.teamKey];
+                if (canBuild && bot.buildCooldown <= 0 && bot.blocksPlaced < bot.maxBlocks && Math.random() < 0.55) {
+                    // Try to find a build spot on the bot's team grid
+                    const spot = pickBotBuildSpot(bot);
+                    if (spot) {
+                        bot.buildTargetX = spot.x;
+                        bot.buildTargetY = spot.y;
+                        bot.buildTargetZ = spot.z;
+                        // Walk toward the grid spot (world position)
+                        if (isTeammate) {
+                            bot.targetX = spot.x * BLOCK_SIZE + 0.5;
+                            bot.targetZ = spot.z * BLOCK_SIZE + 0.5 + 1.5;
+                        } else {
+                            const rg = rivalGrids[bot.teamKey];
+                            bot.targetX = rg.offsetX + spot.x * BLOCK_SIZE + 0.5;
+                            bot.targetZ = rg.offsetZ + spot.z * BLOCK_SIZE + 0.5 + 1.5;
+                        }
+                        bot.state = "building";
+                        bot.stateTimer = 6;
+                        continue;
+                    }
+                }
+                // Just wander
                 pickNewBotTarget(bot);
                 bot.state = "walking";
                 bot.stateTimer = 3 + Math.random() * 5;
+            }
+        }
+        else if (bot.state === "building") {
+            const isTeammate = playerTeam && bot.teamKey === playerTeam;
+            // Walk toward the build grid spot
+            const dx = bot.targetX - bot.x;
+            const dz = bot.targetZ - bot.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+
+            if (dist < 1.2) {
+                // Close enough - face the block spot and place it
+                let lookWorldX, lookWorldZ;
+                if (isTeammate) {
+                    lookWorldX = bot.buildTargetX * BLOCK_SIZE + 0.5;
+                    lookWorldZ = bot.buildTargetZ * BLOCK_SIZE + 0.5;
+                } else {
+                    const rg = rivalGrids[bot.teamKey];
+                    lookWorldX = rg.offsetX + bot.buildTargetX * BLOCK_SIZE + 0.5;
+                    lookWorldZ = rg.offsetZ + bot.buildTargetZ * BLOCK_SIZE + 0.5;
+                }
+                bot.rotation = Math.atan2(lookWorldX - bot.x, lookWorldZ - bot.z);
+
+                // Arm swing animation (placing block)
+                if (bot.parts.rightArm) {
+                    bot.parts.rightArm.rotation.x = -1.2;
+                }
+
+                // Actually place the block after a short pause
+                if (bot.stateTimer <= 5.2) {
+                    if (isTeammate) {
+                        // Teammate: place on player's grid
+                        if (!getBlock(bot.buildTargetX, bot.buildTargetY, bot.buildTargetZ)) {
+                            setBlock(bot.buildTargetX, bot.buildTargetY, bot.buildTargetZ, bot.favBlock);
+                            refreshBuildBlocks();
+                            bot.blocksPlaced++;
+                        }
+                    } else {
+                        // Rival: place on their own team grid
+                        if (!getRivalBlock(bot.teamKey, bot.buildTargetX, bot.buildTargetY, bot.buildTargetZ)) {
+                            setRivalBlock(bot.teamKey, bot.buildTargetX, bot.buildTargetY, bot.buildTargetZ, bot.favBlock);
+                            refreshRivalBlocks(bot.teamKey);
+                            bot.blocksPlaced++;
+                        }
+                    }
+
+                    // Chat about it sometimes
+                    if (bot.blocksPlaced > 0 && Math.random() < 0.35) {
+                        const teamName = TEAMS[bot.teamKey] ? TEAMS[bot.teamKey].name : "our team";
+                        const msgs = [
+                            "placed a " + BLOCK_TYPES[bot.favBlock].name + " for " + teamName + "!",
+                            "there we go! " + teamName + " ftw!",
+                            "helping the team!",
+                            "this boat is gonna be epic",
+                            "i got u guys!",
+                            "adding more blocks for us!",
+                            teamName + " teamwork!!",
+                            "we need more blocks here",
+                            "let me help the team!",
+                            "go " + teamName + "!",
+                        ];
+                        addChatMessage(bot.name, msgs[Math.floor(Math.random() * msgs.length)], bot.teamKey);
+                    }
+
+                    // Reset arm and go idle
+                    if (bot.parts.rightArm) bot.parts.rightArm.rotation.x = 0;
+                    bot.state = "idle";
+                    bot.stateTimer = 1.5 + Math.random() * 3;
+                    bot.buildCooldown = 3 + Math.random() * 5; // wait before building again
+                }
+            } else if (bot.stateTimer <= 0) {
+                // Couldn't reach in time, give up
+                bot.state = "idle";
+                bot.stateTimer = 1 + Math.random() * 2;
+            } else {
+                // Walk toward target
+                const nx = dx / dist;
+                const nz = dz / dist;
+                bot.x += nx * bot.speed * dt;
+                bot.z += nz * bot.speed * dt;
+                bot.rotation = Math.atan2(nx, nz);
+
+                // Walk animation
+                bot.walkCycle += dt * 8;
+                if (bot.parts.leftArm) {
+                    const swing = Math.sin(bot.walkCycle) * 0.5;
+                    bot.parts.leftArm.rotation.x = swing;
+                    bot.parts.rightArm.rotation.x = -swing;
+                    bot.parts.leftLeg.rotation.x = -swing * 0.8;
+                    bot.parts.rightLeg.rotation.x = swing * 0.8;
+                }
             }
         }
         else if (bot.state === "walking") {
@@ -2246,9 +2583,9 @@ function updateBuildBots(dt) {
             bot.grounded = true;
         }
 
-        // Clamp to build area
-        bot.x = Math.max(-4, Math.min(GRID_COLS + 9, bot.x));
-        bot.z = Math.max(-4, Math.min(GRID_ROWS + 5, bot.z));
+        // Clamp to extended build area (includes rival platforms behind)
+        bot.x = Math.max(-20, Math.min(GRID_COLS + 20, bot.x));
+        bot.z = Math.max(-20, Math.min(GRID_ROWS + 5, bot.z));
 
         // Update visual
         bot.group.position.set(bot.x, bot.y, bot.z);
@@ -2261,43 +2598,71 @@ function createAIBoat(teamKey, isTeammate) {
     const team = TEAMS[teamKey];
     const boatGrp = new THREE.Group();
 
-    // Simple randomized boat (3-8 blocks)
-    const numBlocks = 3 + Math.floor(Math.random() * 6);
-    const boatWidth = 2 + Math.floor(Math.random() * 3);
-    const boatMat = new THREE.MeshStandardMaterial({
-        color: 0x8B5E3C, roughness: 0.7
-    });
-    const deckMat = new THREE.MeshStandardMaterial({
-        color: 0xC49A6C, roughness: 0.6
-    });
+    // Try to use blocks the rival team actually built
+    const rivalBlocks = getRivalAllBlocks(teamKey);
+    const useBuiltBlocks = !isTeammate && rivalBlocks.length > 0;
 
-    // Hull
-    for (let i = 0; i < boatWidth; i++) {
-        const geo = new THREE.BoxGeometry(0.9, 0.9, 0.9);
-        const m = new THREE.Mesh(geo, i === 0 || i === boatWidth - 1 ? boatMat : deckMat);
-        m.position.set(i - boatWidth * 0.5 + 0.5, 0.45, 0);
-        m.castShadow = true;
-        boatGrp.add(m);
-    }
-    // Extra blocks on top for variety
-    const extraBlocks = Math.min(numBlocks - boatWidth, 4);
-    for (let i = 0; i < extraBlocks; i++) {
-        const geo = new THREE.BoxGeometry(0.9, 0.9, 0.9);
-        const matChoice = Math.random() > 0.5 ? boatMat : deckMat;
-        const m = new THREE.Mesh(geo, matChoice);
-        m.position.set(
-            Math.floor(Math.random() * boatWidth) - boatWidth * 0.5 + 0.5,
-            1.35,
-            (Math.random() - 0.5) * 0.5
-        );
-        m.castShadow = true;
-        boatGrp.add(m);
+    if (useBuiltBlocks) {
+        // Build the AI boat from the blocks the rival team placed
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        let minZ = Infinity, maxZ = -Infinity;
+        rivalBlocks.forEach(b => {
+            if (b.x < minX) minX = b.x; if (b.x > maxX) maxX = b.x;
+            if (b.y < minY) minY = b.y; if (b.y > maxY) maxY = b.y;
+            if (b.z < minZ) minZ = b.z; if (b.z > maxZ) maxZ = b.z;
+        });
+        const cX = (minX + maxX) / 2;
+        const cZ = (minZ + maxZ) / 2;
+
+        for (let b of rivalBlocks) {
+            const bt = BLOCK_TYPES[b.type];
+            const geo = getBlockGeo(bt.shape || "box");
+            const mat = makeBlockMaterial(bt);
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(
+                (b.x - cX) * BLOCK_SIZE,
+                b.y * BLOCK_SIZE + BLOCK_SIZE * 0.5,
+                (b.z - cZ) * BLOCK_SIZE
+            );
+            if (bt.shape === "torus" || bt.shape === "spring") mesh.rotation.x = Math.PI / 2;
+            mesh.castShadow = true;
+            boatGrp.add(mesh);
+        }
+    } else {
+        // Fallback: simple randomized boat
+        const numBlocks = 3 + Math.floor(Math.random() * 6);
+        const boatWidth = 2 + Math.floor(Math.random() * 3);
+        const boatMat = new THREE.MeshStandardMaterial({ color: 0x8B5E3C, roughness: 0.7 });
+        const deckMat = new THREE.MeshStandardMaterial({ color: 0xC49A6C, roughness: 0.6 });
+
+        for (let i = 0; i < boatWidth; i++) {
+            const geo = new THREE.BoxGeometry(0.9, 0.9, 0.9);
+            const m = new THREE.Mesh(geo, i === 0 || i === boatWidth - 1 ? boatMat : deckMat);
+            m.position.set(i - boatWidth * 0.5 + 0.5, 0.45, 0);
+            m.castShadow = true;
+            boatGrp.add(m);
+        }
+        const extraBlocks = Math.min(numBlocks - boatWidth, 4);
+        for (let i = 0; i < extraBlocks; i++) {
+            const geo = new THREE.BoxGeometry(0.9, 0.9, 0.9);
+            const matChoice = Math.random() > 0.5 ? boatMat : deckMat;
+            const m = new THREE.Mesh(geo, matChoice);
+            m.position.set(
+                Math.floor(Math.random() * boatWidth) - boatWidth * 0.5 + 0.5,
+                1.35,
+                (Math.random() - 0.5) * 0.5
+            );
+            m.castShadow = true;
+            boatGrp.add(m);
+        }
     }
 
     // Add a small player model on top
     const miniPlayer = createPlayerModel(team.color);
     miniPlayer.group.scale.set(0.5, 0.5, 0.5);
-    miniPlayer.group.position.set(0, 1.2, 0);
+    const topY = useBuiltBlocks ? (rivalBlocks.reduce((max, b) => Math.max(max, b.y), 0) + 1) * BLOCK_SIZE : 1.2;
+    miniPlayer.group.position.set(0, topY, 0);
     boatGrp.add(miniPlayer.group);
 
     // Floating team-colored name tag
@@ -2323,6 +2688,13 @@ function createAIBoat(teamKey, isTeammate) {
     // Scale down a bit
     boatGrp.scale.set(0.8, 0.8, 0.8);
 
+    // HP based on what they actually built
+    let boatHP = 50 + Math.random() * 50;
+    if (useBuiltBlocks) {
+        boatHP = 0;
+        rivalBlocks.forEach(b => { boatHP += (BLOCK_TYPES[b.type] ? BLOCK_TYPES[b.type].hp : 20); });
+    }
+
     return {
         group: boatGrp,
         teamKey: teamKey,
@@ -2332,7 +2704,7 @@ function createAIBoat(teamKey, isTeammate) {
         speed: (1.0 + Math.random() * 0.6) * sailSpeed * 10,
         bobPhase: Math.random() * Math.PI * 2,
         alive: true,
-        hp: 50 + Math.random() * 50,
+        hp: boatHP,
         avoidTimer: 0,
         steerDir: 0,
     };
