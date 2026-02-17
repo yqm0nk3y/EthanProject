@@ -7,4 +7,3 @@ can u make them
 help build the boat and all the people in the team shares boats
 can u make them reply to me
 can u add more obstacles diffrent!
-i want them to ride the boat with me
