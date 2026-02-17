@@ -228,6 +228,107 @@
                 <button onclick="closeShop()">Close</button>
             </div>
         </div>
+
+        <!-- ADMIN PANEL -->
+        <button id="admin-toggle-btn" onclick="toggleAdmin()">ADMIN</button>
+        <div id="admin-overlay" style="display:none;">
+            <div class="admin-box">
+                <div class="admin-header">
+                    <h2>Admin Panel</h2>
+                    <button class="admin-close-btn" onclick="toggleAdmin()">X</button>
+                </div>
+
+                <!-- Tabs -->
+                <div class="admin-tabs">
+                    <button class="admin-tab active" onclick="adminTab('gold')">Gold</button>
+                    <button class="admin-tab" onclick="adminTab('blocks')">Blocks</button>
+                    <button class="admin-tab" onclick="adminTab('game')">Game</button>
+                    <button class="admin-tab" onclick="adminTab('spawn')">Spawn</button>
+                </div>
+
+                <!-- Gold Tab -->
+                <div id="admin-tab-gold" class="admin-tab-content active">
+                    <p class="admin-label">Current Gold: <span id="admin-gold-display">0</span></p>
+                    <div class="admin-row">
+                        <button onclick="adminGiveGold(100)">+100</button>
+                        <button onclick="adminGiveGold(500)">+500</button>
+                        <button onclick="adminGiveGold(1000)">+1K</button>
+                        <button onclick="adminGiveGold(10000)">+10K</button>
+                        <button onclick="adminGiveGold(100000)">+100K</button>
+                    </div>
+                    <div class="admin-row">
+                        <button onclick="adminSetGold(0)">Set 0</button>
+                        <button onclick="adminSetGold(9999999)">MAX</button>
+                    </div>
+                </div>
+
+                <!-- Blocks Tab -->
+                <div id="admin-tab-blocks" class="admin-tab-content">
+                    <div class="admin-row">
+                        <button onclick="adminUnlockAll()">Unlock All Blocks</button>
+                        <button onclick="adminGiveAllBlocks(50)">+50 Each</button>
+                        <button onclick="adminGiveAllBlocks(999)">+999 Each</button>
+                    </div>
+                    <p class="admin-label">Give Specific Block:</p>
+                    <div class="admin-row">
+                        <select id="admin-block-select"></select>
+                        <input type="number" id="admin-block-amount" value="50" min="1" max="9999" style="width:60px;">
+                        <button onclick="adminGiveBlock()">Give</button>
+                    </div>
+                </div>
+
+                <!-- Game Tab -->
+                <div id="admin-tab-game" class="admin-tab-content">
+                    <p class="admin-label">Stage: <span id="admin-stage-display">1</span></p>
+                    <div class="admin-row">
+                        <button onclick="adminSetStage(1)">Stage 1</button>
+                        <button onclick="adminSetStage(2)">Stage 2</button>
+                        <button onclick="adminSetStage(3)">Stage 3</button>
+                        <button onclick="adminSetStage(4)">Stage 4</button>
+                        <button onclick="adminSetStage(5)">Stage 5</button>
+                    </div>
+                    <p class="admin-label">Player:</p>
+                    <div class="admin-row">
+                        <button onclick="adminGodMode()">Toggle God Mode</button>
+                        <button onclick="adminSetSpeed(12)">2x Speed</button>
+                        <button onclick="adminSetSpeed(6)">Normal Speed</button>
+                    </div>
+                    <p class="admin-label">Boat (during sailing):</p>
+                    <div class="admin-row">
+                        <button onclick="adminHealBoat()">Full Heal</button>
+                        <button onclick="adminBoostBoat()">Speed Boost</button>
+                    </div>
+                    <div class="admin-row">
+                        <button onclick="adminWinStage()">Win Stage</button>
+                        <button onclick="adminResetSave()">Reset Save</button>
+                    </div>
+                </div>
+
+                <!-- Spawn Tab -->
+                <div id="admin-tab-spawn" class="admin-tab-content">
+                    <p class="admin-label">Spawn Bots:</p>
+                    <div class="admin-row">
+                        <button onclick="adminSpawnBots(5)">+5 Bots</button>
+                        <button onclick="adminSpawnBots(10)">+10 Bots</button>
+                        <button onclick="adminClearBots()">Remove Bots</button>
+                    </div>
+                    <p class="admin-label">Fill Grid:</p>
+                    <div class="admin-row">
+                        <select id="admin-fill-block-select"></select>
+                        <button onclick="adminFillGrid()">Fill Base</button>
+                        <button onclick="adminFillGridFull()">Fill 3 High</button>
+                    </div>
+                    <p class="admin-label">Team Scores:</p>
+                    <div class="admin-row">
+                        <button onclick="adminAddTeamScore('red', 500)">Red +500</button>
+                        <button onclick="adminAddTeamScore('blue', 500)">Blue +500</button>
+                        <button onclick="adminAddTeamScore('green', 500)">Green +500</button>
+                        <button onclick="adminAddTeamScore('yellow', 500)">Yellow +500</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>

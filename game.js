@@ -394,7 +394,11 @@ function init() {
 
     // Events
     window.addEventListener("resize", onResize);
-    document.addEventListener("keydown", e => { if (!chatInputFocused) keysDown[e.key] = true; });
+    document.addEventListener("keydown", e => {
+        if (!chatInputFocused) keysDown[e.key] = true;
+        // Backtick key toggles admin panel
+        if (e.key === "`" && !chatInputFocused) { e.preventDefault(); toggleAdmin(); }
+    });
     document.addEventListener("keyup", e => { keysDown[e.key] = false; });
 
     raycaster = new THREE.Raycaster();
@@ -2067,6 +2071,7 @@ function updateSailing(dt) {
 }
 
 function damageBoat(amount) {
+    if (godMode) return; // Admin god mode - no damage
     boat.totalHP -= amount;
     if (boat.totalHP < 0) boat.totalHP = 0;
 
@@ -3076,6 +3081,215 @@ function initChat() {
             input.focus();
         }
     });
+}
+
+// ===== ADMIN PANEL =====
+let adminOpen = false;
+let godMode = false;
+
+function toggleAdmin() {
+    adminOpen = !adminOpen;
+    document.getElementById("admin-overlay").style.display = adminOpen ? "flex" : "none";
+    if (adminOpen) refreshAdminPanel();
+}
+
+function refreshAdminPanel() {
+    const goldEl = document.getElementById("admin-gold-display");
+    if (goldEl) goldEl.textContent = gold;
+    const stageEl = document.getElementById("admin-stage-display");
+    if (stageEl) stageEl.textContent = currentStage;
+
+    // Populate block selects
+    const sel1 = document.getElementById("admin-block-select");
+    const sel2 = document.getElementById("admin-fill-block-select");
+    if (sel1 && sel1.options.length === 0) {
+        for (let key in BLOCK_TYPES) {
+            const opt = document.createElement("option");
+            opt.value = key;
+            opt.textContent = BLOCK_TYPES[key].name;
+            sel1.appendChild(opt);
+            sel2.appendChild(opt.cloneNode(true));
+        }
+    }
+}
+
+function adminTab(tabName) {
+    document.querySelectorAll(".admin-tab-content").forEach(el => el.classList.remove("active"));
+    document.querySelectorAll(".admin-tab").forEach(el => el.classList.remove("active"));
+    document.getElementById("admin-tab-" + tabName).classList.add("active");
+    // Find the tab button
+    document.querySelectorAll(".admin-tab").forEach(el => {
+        if (el.textContent.toLowerCase() === tabName) el.classList.add("active");
+    });
+}
+
+// Gold
+function adminGiveGold(amount) {
+    gold += amount;
+    totalGoldEarned += amount;
+    updateHUD();
+    saveGame();
+    refreshAdminPanel();
+    showMessage("+" + amount + " gold!");
+}
+
+function adminSetGold(amount) {
+    gold = amount;
+    updateHUD();
+    saveGame();
+    refreshAdminPanel();
+    showMessage("Gold set to " + amount);
+}
+
+// Blocks
+function adminUnlockAll() {
+    for (let key in BLOCK_TYPES) {
+        unlockedBlocks[key] = true;
+    }
+    renderBlockList();
+    saveGame();
+    showMessage("All blocks unlocked!");
+}
+
+function adminGiveAllBlocks(amount) {
+    for (let key in BLOCK_TYPES) {
+        unlockedBlocks[key] = true;
+        inventory[key] = (inventory[key] || 0) + amount;
+    }
+    renderBlockList();
+    saveGame();
+    showMessage("+" + amount + " of every block!");
+}
+
+function adminGiveBlock() {
+    const sel = document.getElementById("admin-block-select");
+    const amountInput = document.getElementById("admin-block-amount");
+    const key = sel.value;
+    const amount = parseInt(amountInput.value) || 50;
+    unlockedBlocks[key] = true;
+    inventory[key] = (inventory[key] || 0) + amount;
+    renderBlockList();
+    saveGame();
+    showMessage("+" + amount + " " + BLOCK_TYPES[key].name);
+}
+
+// Game
+function adminSetStage(stage) {
+    currentStage = stage;
+    maxDistance = (stageDistances[stage - 1] || 10000);
+    updateHUD();
+    saveGame();
+    refreshAdminPanel();
+    showMessage("Stage set to " + stage);
+}
+
+function adminGodMode() {
+    godMode = !godMode;
+    showMessage("God Mode: " + (godMode ? "ON" : "OFF"));
+}
+
+function adminSetSpeed(speed) {
+    player.speed = speed;
+    showMessage("Player speed: " + speed);
+}
+
+function adminHealBoat() {
+    if (gameState === "sailing") {
+        boat.totalHP = boat.maxHP;
+        showMessage("Boat fully healed!");
+    } else {
+        showMessage("Must be sailing!");
+    }
+}
+
+function adminBoostBoat() {
+    if (gameState === "sailing") {
+        sailSpeed += 2;
+        boat.vx = sailSpeed * 10;
+        showMessage("Speed boosted!");
+    } else {
+        showMessage("Must be sailing!");
+    }
+}
+
+function adminWinStage() {
+    if (gameState === "sailing") {
+        distance = maxDistance + 1;
+        showMessage("Stage complete!");
+    } else {
+        showMessage("Must be sailing!");
+    }
+}
+
+function adminResetSave() {
+    localStorage.removeItem("boatGame3DSave");
+    gold = 50;
+    totalGoldEarned = 0;
+    inventory = { ...STARTING_INVENTORY };
+    unlockedBlocks = {};
+    for (let key in BLOCK_TYPES) {
+        if (BLOCK_TYPES[key].unlocked) unlockedBlocks[key] = true;
+    }
+    currentStage = 1;
+    playerTeam = null;
+    teamScores = { red: 0, blue: 0, green: 0, yellow: 0 };
+    renderBlockList();
+    updateHUD();
+    refreshAdminPanel();
+    showMessage("Save data reset!");
+}
+
+// Spawn
+function adminSpawnBots(count) {
+    if (gameState !== "building") { showMessage("Must be building!"); return; }
+    for (let i = 0; i < count; i++) {
+        const bot = createBuildBot(playerTeam);
+        buildScene.add(bot.group);
+        buildBots.push(bot);
+    }
+    showMessage("Spawned " + count + " teammate bots!");
+}
+
+function adminClearBots() {
+    cleanupBuildBots();
+    showMessage("All bots removed");
+}
+
+function adminFillGrid() {
+    const sel = document.getElementById("admin-fill-block-select");
+    const blockType = sel.value;
+    for (let z = 0; z < GRID_ROWS; z++) {
+        for (let x = 0; x < GRID_COLS; x++) {
+            if (!getBlock(x, 0, z)) {
+                setBlock(x, 0, z, blockType);
+            }
+        }
+    }
+    refreshBuildBlocks();
+    showMessage("Grid base filled with " + BLOCK_TYPES[blockType].name);
+}
+
+function adminFillGridFull() {
+    const sel = document.getElementById("admin-fill-block-select");
+    const blockType = sel.value;
+    for (let y = 0; y < 3; y++) {
+        for (let z = 0; z < GRID_ROWS; z++) {
+            for (let x = 0; x < GRID_COLS; x++) {
+                if (!getBlock(x, y, z)) {
+                    setBlock(x, y, z, blockType);
+                }
+            }
+        }
+    }
+    refreshBuildBlocks();
+    showMessage("Grid filled 3 high with " + BLOCK_TYPES[blockType].name);
+}
+
+function adminAddTeamScore(teamKey, amount) {
+    teamScores[teamKey] = (teamScores[teamKey] || 0) + amount;
+    updateTeamLeaderboard();
+    saveGame();
+    showMessage(TEAMS[teamKey].name + " +" + amount);
 }
 
 // ===== TOUCH CONTROLS =====
