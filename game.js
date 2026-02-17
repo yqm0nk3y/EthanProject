@@ -115,6 +115,29 @@ let chatBotTimer = 0;
 let chatInputFocused = false;
 let playerChatName = "You";
 
+// ===== INPUT METHOD =====
+let inputMethod = null; // "touchscreen" or "keyboard"
+
+// Touch control state
+let touchJoystick = { active: false, startX: 0, startY: 0, dx: 0, dy: 0, touchId: null };
+let touchPlace = false;
+let touchRemove = false;
+let touchJump = false;
+let touchAccel = false;
+let touchBrake = false;
+let touchSteerLeft = false;
+let touchSteerRight = false;
+
+function selectInputMethod(method) {
+    inputMethod = method;
+    document.getElementById("input-select-screen").style.display = "none";
+    document.getElementById("title-screen").style.display = "flex";
+
+    if (method === "touchscreen") {
+        document.body.classList.add("touch-mode");
+    }
+}
+
 // ===== GAME STATE =====
 let gameState = "title"; // title, building, sailing, results
 let gold = 50;
@@ -372,6 +395,12 @@ function init() {
     container.addEventListener("mousedown", onMouseDown);
     container.addEventListener("contextmenu", e => e.preventDefault());
 
+    // Touch events for touchscreen mode
+    container.addEventListener("touchstart", onTouchTap, { passive: false });
+    container.addEventListener("touchmove", onTouchTapMove, { passive: false });
+    container.addEventListener("touchend", onTouchTapEnd, { passive: false });
+
+    initTouchControls();
     initChat();
 
     requestAnimationFrame(gameLoop);
@@ -1689,16 +1718,18 @@ function updateSailing(dt) {
     const maxSpeed = baseSpeed * 2.5;
     const minSpeed = -baseSpeed * 0.5; // can reverse slowly
 
-    if (keysDown["w"] || keysDown["W"] || keysDown["ArrowUp"]) {
+    const accelInput = keysDown["w"] || keysDown["W"] || keysDown["ArrowUp"] || touchAccel || (touchJoystick.active && touchJoystick.dy < -0.3);
+    const brakeInput = keysDown["s"] || keysDown["S"] || keysDown["ArrowDown"] || touchBrake || (touchJoystick.active && touchJoystick.dy > 0.3);
+
+    if (accelInput) {
         boat.vx += 30 * dt; // accelerate forward
     }
-    if (keysDown["s"] || keysDown["S"] || keysDown["ArrowDown"]) {
+    if (brakeInput) {
         boat.vx -= 20 * dt; // brake / reverse
     }
 
     // Drift toward base speed when no input
-    if (!keysDown["w"] && !keysDown["W"] && !keysDown["ArrowUp"] &&
-        !keysDown["s"] && !keysDown["S"] && !keysDown["ArrowDown"]) {
+    if (!accelInput && !brakeInput) {
         boat.vx += (baseSpeed - boat.vx) * 1.5 * dt; // ease back to base speed
     }
 
@@ -1715,8 +1746,10 @@ function updateSailing(dt) {
     const sinkAmount = (1 - floatRatio) * 2 * dt;
 
     // Left / right steering
-    if (keysDown["a"] || keysDown["A"] || keysDown["ArrowLeft"]) boat.vz -= 15 * dt;
-    if (keysDown["d"] || keysDown["D"] || keysDown["ArrowRight"]) boat.vz += 15 * dt;
+    const steerLeft = keysDown["a"] || keysDown["A"] || keysDown["ArrowLeft"] || (touchJoystick.active && touchJoystick.dx < -0.3);
+    const steerRight = keysDown["d"] || keysDown["D"] || keysDown["ArrowRight"] || (touchJoystick.active && touchJoystick.dx > 0.3);
+    if (steerLeft) boat.vz -= 15 * dt;
+    if (steerRight) boat.vz += 15 * dt;
     boat.vz *= 0.95;
     boat.z += boat.vz * dt;
 
@@ -2648,6 +2681,210 @@ function initChat() {
     });
 }
 
+// ===== TOUCH CONTROLS =====
+function initTouchControls() {
+    // Virtual Joystick
+    const joystickZone = document.getElementById("joystick-zone");
+    if (!joystickZone) return;
+
+    joystickZone.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        const touch = e.changedTouches[0];
+        const rect = document.getElementById("joystick-base").getBoundingClientRect();
+        touchJoystick.active = true;
+        touchJoystick.touchId = touch.identifier;
+        touchJoystick.startX = rect.left + rect.width / 2;
+        touchJoystick.startY = rect.top + rect.height / 2;
+        touchJoystick.dx = 0;
+        touchJoystick.dy = 0;
+    }, { passive: false });
+
+    joystickZone.addEventListener("touchmove", (e) => {
+        e.preventDefault();
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const touch = e.changedTouches[i];
+            if (touch.identifier === touchJoystick.touchId) {
+                const maxRadius = 45;
+                let dx = touch.clientX - touchJoystick.startX;
+                let dy = touch.clientY - touchJoystick.startY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > maxRadius) {
+                    dx = (dx / dist) * maxRadius;
+                    dy = (dy / dist) * maxRadius;
+                }
+                touchJoystick.dx = dx / maxRadius; // -1 to 1
+                touchJoystick.dy = dy / maxRadius;
+
+                // Move thumb visually
+                const thumb = document.getElementById("joystick-thumb");
+                thumb.style.transform = `translate(${dx}px, ${dy}px)`;
+            }
+        }
+    }, { passive: false });
+
+    const resetJoystick = (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === touchJoystick.touchId) {
+                touchJoystick.active = false;
+                touchJoystick.dx = 0;
+                touchJoystick.dy = 0;
+                touchJoystick.touchId = null;
+                const thumb = document.getElementById("joystick-thumb");
+                thumb.style.transform = "translate(0px, 0px)";
+            }
+        }
+    };
+
+    joystickZone.addEventListener("touchend", resetJoystick, { passive: false });
+    joystickZone.addEventListener("touchcancel", resetJoystick, { passive: false });
+
+    // Action Buttons - using touchstart/touchend for held buttons
+    setupTouchButton("touch-jump-btn", (down) => { touchJump = down; });
+    setupTouchButton("touch-place-btn", (down) => { touchPlace = down; });
+    setupTouchButton("touch-remove-btn", (down) => { touchRemove = down; });
+    setupTouchButton("touch-accel-btn", (down) => { touchAccel = down; });
+    setupTouchButton("touch-brake-btn", (down) => { touchBrake = down; });
+
+    // Sail button is a single tap, not held
+    const sailBtn = document.getElementById("touch-sail-btn");
+    if (sailBtn) {
+        sailBtn.addEventListener("touchstart", (e) => {
+            e.preventDefault();
+            startSailing();
+        }, { passive: false });
+    }
+}
+
+function setupTouchButton(id, callback) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        callback(true);
+    }, { passive: false });
+    btn.addEventListener("touchend", (e) => {
+        e.preventDefault();
+        callback(false);
+    }, { passive: false });
+    btn.addEventListener("touchcancel", (e) => {
+        callback(false);
+    }, { passive: false });
+}
+
+// Touch tap on renderer - for placing/removing blocks via tap
+let lastTouchPos = null;
+let touchMoved = false;
+
+function onTouchTap(e) {
+    if (inputMethod !== "touchscreen") return;
+    if (gameState !== "building") return;
+    e.preventDefault();
+
+    const touch = e.changedTouches[0];
+    lastTouchPos = { x: touch.clientX, y: touch.clientY };
+    touchMoved = false;
+}
+
+function onTouchTapMove(e) {
+    if (inputMethod !== "touchscreen") return;
+    if (gameState !== "building") return;
+    e.preventDefault();
+
+    if (lastTouchPos) {
+        const touch = e.changedTouches[0];
+        const dx = touch.clientX - lastTouchPos.x;
+        const dy = touch.clientY - lastTouchPos.y;
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+            touchMoved = true;
+        }
+    }
+}
+
+function onTouchTapEnd(e) {
+    if (inputMethod !== "touchscreen") return;
+    if (gameState !== "building") return;
+    e.preventDefault();
+
+    if (!touchMoved && lastTouchPos) {
+        const touch = e.changedTouches[0];
+        // Simulate a click for block placement
+        const container = document.getElementById("renderer-container");
+        const rect = container.getBoundingClientRect();
+        mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(mouse, buildCamera);
+
+        if (touchRemove) {
+            // Remove mode
+            const blockIntersects = raycaster.intersectObjects(buildBlockMeshes);
+            if (blockIntersects.length > 0) {
+                const ud = blockIntersects[0].object.userData;
+                if (ud.isPlacedBlock) {
+                    const blockType = getBlock(ud.gx, ud.gy, ud.gz);
+                    if (blockType) {
+                        setBlock(ud.gx, ud.gy, ud.gz, null);
+                        inventory[blockType] = (inventory[blockType] || 0) + 1;
+                        refreshBuildBlocks();
+                        renderBlockList();
+                    }
+                }
+            }
+        } else {
+            // Check launch button
+            if (launchButtonGroup) {
+                const btnHits = raycaster.intersectObjects(launchButtonGroup.children, true);
+                if (btnHits.length > 0) {
+                    startSailing();
+                    lastTouchPos = null;
+                    return;
+                }
+            }
+            // Place mode
+            const targets = [...buildBaseMeshes, ...buildBlockMeshes];
+            const intersects = raycaster.intersectObjects(targets);
+            if (intersects.length > 0) {
+                const pos = getPlacePosition(intersects[0]);
+                if (!pos) { lastTouchPos = null; return; }
+                if (pos.y < 0) { lastTouchPos = null; return; }
+                if (getBlock(pos.x, pos.y, pos.z)) { lastTouchPos = null; return; }
+                if (!unlockedBlocks[selectedBlock] && !BLOCK_TYPES[selectedBlock].unlocked) { lastTouchPos = null; return; }
+                if ((inventory[selectedBlock] || 0) <= 0) {
+                    showMessage("No " + BLOCK_TYPES[selectedBlock].name + " left!");
+                    lastTouchPos = null;
+                    return;
+                }
+                setBlock(pos.x, pos.y, pos.z, selectedBlock);
+                inventory[selectedBlock]--;
+                refreshBuildBlocks();
+                renderBlockList();
+            }
+        }
+    }
+    lastTouchPos = null;
+    touchMoved = false;
+}
+
+function showTouchControls(mode) {
+    if (inputMethod !== "touchscreen") return;
+    const controls = document.getElementById("touch-controls");
+    const actionBtns = document.getElementById("touch-action-buttons");
+    const sailControls = document.getElementById("touch-sail-controls");
+    const sailBtn = document.getElementById("touch-sail-btn");
+
+    if (mode === "building") {
+        controls.style.display = "block";
+        actionBtns.style.display = "flex";
+        sailControls.style.display = "none";
+        sailBtn.style.display = "inline-block";
+    } else if (mode === "sailing") {
+        controls.style.display = "block";
+        actionBtns.style.display = "none";
+        sailControls.style.display = "flex";
+    } else {
+        controls.style.display = "none";
+    }
+}
+
 // ===== GAME LOOP =====
 let lastTime = 0;
 let keysDown = {};
@@ -2663,6 +2900,12 @@ function gameLoop(timestamp) {
         if (keysDown["s"] || keysDown["S"] || keysDown["ArrowDown"]) moveZ = 1;
         if (keysDown["a"] || keysDown["A"] || keysDown["ArrowLeft"]) moveX = -1;
         if (keysDown["d"] || keysDown["D"] || keysDown["ArrowRight"]) moveX = 1;
+
+        // Touch joystick input
+        if (touchJoystick.active) {
+            moveX = touchJoystick.dx;
+            moveZ = touchJoystick.dy;
+        }
 
         const isMoving = moveX !== 0 || moveZ !== 0;
         if (isMoving) {
@@ -2683,7 +2926,7 @@ function gameLoop(timestamp) {
         }
 
         // Jump
-        if ((keysDown[" "] || keysDown["Space"]) && player.grounded) {
+        if ((keysDown[" "] || keysDown["Space"] || touchJump) && player.grounded) {
             player.vy = 5;
             player.grounded = false;
         }

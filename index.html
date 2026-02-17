@@ -7,6 +7,26 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <!-- INPUT METHOD SELECTION SCREEN -->
+    <div id="input-select-screen">
+        <div class="input-select-content">
+            <h1>Choose Your Controls</h1>
+            <p class="input-select-sub">How would you like to play?</p>
+            <div class="input-select-grid">
+                <div class="input-select-card" onclick="selectInputMethod('touchscreen')">
+                    <div class="input-select-icon">&#128400;</div>
+                    <div class="input-select-label">Touchscreen</div>
+                    <div class="input-select-desc">Mobile &amp; iPad<br>Virtual joystick + tap controls</div>
+                </div>
+                <div class="input-select-card" onclick="selectInputMethod('keyboard')">
+                    <div class="input-select-icon">&#9000;</div>
+                    <div class="input-select-label">Keyboard</div>
+                    <div class="input-select-desc">Desktop / Laptop<br>WASD + mouse controls</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- TITLE SCREEN -->
     <div id="title-screen">
         <div class="title-content">
@@ -108,6 +128,28 @@
             <div id="chat-input-row">
                 <input type="text" id="chat-input" placeholder='Press "/" to chat...' maxlength="100" autocomplete="off">
                 <button id="chat-send-btn" onclick="sendPlayerChat()">Send</button>
+            </div>
+        </div>
+
+        <!-- TOUCH CONTROLS (only visible in touchscreen mode) -->
+        <div id="touch-controls" style="display:none;">
+            <!-- Virtual Joystick (left side) -->
+            <div id="joystick-zone">
+                <div id="joystick-base">
+                    <div id="joystick-thumb"></div>
+                </div>
+            </div>
+            <!-- Action Buttons (right side) -->
+            <div id="touch-action-buttons">
+                <button id="touch-jump-btn" class="touch-btn">JUMP</button>
+                <button id="touch-place-btn" class="touch-btn touch-btn-primary">PLACE</button>
+                <button id="touch-remove-btn" class="touch-btn touch-btn-danger">REMOVE</button>
+                <button id="touch-sail-btn" class="touch-btn touch-btn-gold" style="display:none;">SAIL!</button>
+            </div>
+            <!-- Sailing touch buttons (shown during sailing) -->
+            <div id="touch-sail-controls" style="display:none;">
+                <button id="touch-accel-btn" class="touch-btn touch-btn-primary">SPEED UP</button>
+                <button id="touch-brake-btn" class="touch-btn touch-btn-danger">BRAKE</button>
             </div>
         </div>
 
