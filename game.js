@@ -135,6 +135,11 @@ function selectInputMethod(method) {
 
     if (method === "touchscreen") {
         document.body.classList.add("touch-mode");
+        document.getElementById("instructions-keyboard").style.display = "none";
+        document.getElementById("instructions-touch").style.display = "inline-block";
+    } else {
+        document.getElementById("instructions-keyboard").style.display = "inline-block";
+        document.getElementById("instructions-touch").style.display = "none";
     }
 }
 
@@ -1077,6 +1082,7 @@ function enterBuildMode() {
     refreshBuildBlocks();
     updateTeamLeaderboard();
     document.getElementById("team-leaderboard").style.display = "block";
+    showTouchControls("building");
 
     // Position player near the build grid
     player.x = GRID_COLS * 0.5;
@@ -1099,6 +1105,12 @@ function goToBuild() {
     document.getElementById("distance-bar-container").style.display = "none";
     gameState = "building";
     clearBuildGrid();
+
+    // Restore inventory so blocks aren't lost after sailing
+    if (savedInventory) {
+        inventory = { ...savedInventory };
+        savedInventory = null;
+    }
     onResize();
     renderBlockList();
     updateHUD();
@@ -1124,6 +1136,7 @@ function goToBuild() {
 
     // Spawn NPC bots
     spawnBuildBots();
+    showTouchControls("building");
 }
 
 function goToShop() {
@@ -1212,7 +1225,17 @@ function clearBoat() {
 }
 
 // ===== SAILING =====
+let savedInventory = null; // saved before sailing so blocks aren't lost
+
 function startSailing() {
+    // Save inventory before sailing so blocks can be restored
+    savedInventory = { ...inventory };
+    // Also add back the blocks currently on the grid
+    for (let key in buildGrid) {
+        const type = buildGrid[key];
+        savedInventory[type] = (savedInventory[type] || 0) + 1;
+    }
+
     // Cleanup build bots
     cleanupBuildBots();
 
@@ -1502,6 +1525,7 @@ function updateLaunch(dt) {
             boat.x = 0;
             boat.z = 0;
             document.getElementById("distance-bar-container").style.display = "flex";
+            showTouchControls("sailing");
             showMessage("Here we go! Stage " + currentStage);
         }
     }
@@ -2486,6 +2510,7 @@ function updateTeamLeaderboard() {
 // ===== END SAILING =====
 function endSailing(won) {
     gameState = "results";
+    showTouchControls("none");
 
     const distBonus = Math.floor(distance / 50);
     const stageBonus = won ? 50 * currentStage : 0;
@@ -2740,12 +2765,25 @@ function initTouchControls() {
 
     // Action Buttons - using touchstart/touchend for held buttons
     setupTouchButton("touch-jump-btn", (down) => { touchJump = down; });
-    setupTouchButton("touch-place-btn", (down) => { touchPlace = down; });
-    setupTouchButton("touch-remove-btn", (down) => { touchRemove = down; });
+    setupTouchButton("touch-remove-btn", (down) => {
+        touchRemove = down;
+        const btn = document.getElementById("touch-remove-btn");
+        if (btn) {
+            if (down) {
+                btn.style.background = "rgba(231, 76, 60, 0.7)";
+                btn.style.boxShadow = "0 0 20px rgba(231, 76, 60, 0.5)";
+                btn.textContent = "REMOVING...";
+            } else {
+                btn.style.background = "";
+                btn.style.boxShadow = "";
+                btn.textContent = "REMOVE";
+            }
+        }
+    });
     setupTouchButton("touch-accel-btn", (down) => { touchAccel = down; });
     setupTouchButton("touch-brake-btn", (down) => { touchBrake = down; });
 
-    // Sail button is a single tap, not held
+    // Sail button is a single tap
     const sailBtn = document.getElementById("touch-sail-btn");
     if (sailBtn) {
         sailBtn.addEventListener("touchstart", (e) => {
@@ -2867,19 +2905,20 @@ function onTouchTapEnd(e) {
 function showTouchControls(mode) {
     if (inputMethod !== "touchscreen") return;
     const controls = document.getElementById("touch-controls");
-    const actionBtns = document.getElementById("touch-action-buttons");
+    const buildActions = document.getElementById("touch-build-actions");
     const sailControls = document.getElementById("touch-sail-controls");
-    const sailBtn = document.getElementById("touch-sail-btn");
+    const jumpBtn = document.getElementById("touch-jump-btn");
 
     if (mode === "building") {
         controls.style.display = "block";
-        actionBtns.style.display = "flex";
+        buildActions.style.display = "flex";
         sailControls.style.display = "none";
-        sailBtn.style.display = "inline-block";
+        jumpBtn.style.display = "flex";
     } else if (mode === "sailing") {
         controls.style.display = "block";
-        actionBtns.style.display = "none";
+        buildActions.style.display = "none";
         sailControls.style.display = "flex";
+        jumpBtn.style.display = "none";
     } else {
         controls.style.display = "none";
     }
@@ -2907,15 +2946,16 @@ function gameLoop(timestamp) {
             moveZ = touchJoystick.dy;
         }
 
-        const isMoving = moveX !== 0 || moveZ !== 0;
+        const isMoving = Math.abs(moveX) > 0.1 || Math.abs(moveZ) > 0.1;
         if (isMoving) {
-            // Normalize diagonal
+            // Normalize diagonal but preserve analog magnitude from joystick
             const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
+            const magnitude = Math.min(len, 1); // clamp to 1
             moveX /= len;
             moveZ /= len;
 
-            player.x += moveX * player.speed * dt;
-            player.z += moveZ * player.speed * dt;
+            player.x += moveX * player.speed * magnitude * dt;
+            player.z += moveZ * player.speed * magnitude * dt;
 
             // Face movement direction
             player.rotation = Math.atan2(moveX, moveZ);

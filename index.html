@@ -14,12 +14,31 @@
             <p class="input-select-sub">How would you like to play?</p>
             <div class="input-select-grid">
                 <div class="input-select-card" onclick="selectInputMethod('touchscreen')">
-                    <div class="input-select-icon">&#128400;</div>
+                    <div class="input-select-icon touch-icon">
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+                            <rect x="15" y="5" width="50" height="70" rx="8" stroke="#1e90ff" stroke-width="3" fill="rgba(30,144,255,0.15)"/>
+                            <circle cx="40" cy="62" r="5" fill="#1e90ff"/>
+                            <rect x="22" y="12" width="36" height="40" rx="3" fill="rgba(30,144,255,0.3)"/>
+                        </svg>
+                    </div>
                     <div class="input-select-label">Touchscreen</div>
                     <div class="input-select-desc">Mobile &amp; iPad<br>Virtual joystick + tap controls</div>
                 </div>
                 <div class="input-select-card" onclick="selectInputMethod('keyboard')">
-                    <div class="input-select-icon">&#9000;</div>
+                    <div class="input-select-icon kb-icon">
+                        <svg width="90" height="60" viewBox="0 0 90 60" fill="none">
+                            <rect x="2" y="2" width="86" height="56" rx="8" stroke="#ffd700" stroke-width="3" fill="rgba(255,215,0,0.1)"/>
+                            <rect x="10" y="10" width="12" height="10" rx="2" fill="rgba(255,215,0,0.35)"/>
+                            <rect x="26" y="10" width="12" height="10" rx="2" fill="rgba(255,215,0,0.35)"/>
+                            <rect x="42" y="10" width="12" height="10" rx="2" fill="rgba(255,215,0,0.35)"/>
+                            <rect x="58" y="10" width="12" height="10" rx="2" fill="rgba(255,215,0,0.35)"/>
+                            <rect x="14" y="24" width="12" height="10" rx="2" fill="rgba(255,215,0,0.35)"/>
+                            <rect x="30" y="24" width="12" height="10" rx="2" fill="rgba(255,215,0,0.35)"/>
+                            <rect x="46" y="24" width="12" height="10" rx="2" fill="rgba(255,215,0,0.35)"/>
+                            <rect x="62" y="24" width="12" height="10" rx="2" fill="rgba(255,215,0,0.35)"/>
+                            <rect x="22" y="40" width="46" height="10" rx="2" fill="rgba(255,215,0,0.35)"/>
+                        </svg>
+                    </div>
                     <div class="input-select-label">Keyboard</div>
                     <div class="input-select-desc">Desktop / Laptop<br>WASD + mouse controls</div>
                 </div>
@@ -28,13 +47,13 @@
     </div>
 
     <!-- TITLE SCREEN -->
-    <div id="title-screen">
+    <div id="title-screen" style="display:none;">
         <div class="title-content">
             <h1>Build a Boat<br><span>for Treasure!</span></h1>
             <p class="tag3d">3D Edition</p>
             <p class="subtitle">Place blocks, build your boat, survive the river, find the treasure!</p>
             <button id="play-btn" onclick="startGame()">PLAY</button>
-            <div class="instructions-preview">
+            <div class="instructions-preview" id="instructions-keyboard">
                 <p><strong>How to Play:</strong></p>
                 <p>1. WASD to walk, click grid to place blocks</p>
                 <p>2. Click block faces to build up!</p>
@@ -43,6 +62,16 @@
                 <p><strong>Sailing Controls:</strong></p>
                 <p>W = Speed Up | S = Brake/Reverse</p>
                 <p>A = Steer Left | D = Steer Right</p>
+            </div>
+            <div class="instructions-preview" id="instructions-touch" style="display:none;">
+                <p><strong>How to Play:</strong></p>
+                <p>1. Use joystick (left) to walk around</p>
+                <p>2. Tap on grid to place blocks</p>
+                <p>3. Hold REMOVE then tap to delete blocks</p>
+                <p>4. Tap SAIL! button to launch!</p>
+                <p><strong>Sailing Controls:</strong></p>
+                <p>Joystick = Steer left/right &amp; speed</p>
+                <p>SPEED UP / BRAKE buttons on right</p>
             </div>
         </div>
         <canvas id="title-bg-canvas"></canvas>
@@ -133,23 +162,29 @@
 
         <!-- TOUCH CONTROLS (only visible in touchscreen mode) -->
         <div id="touch-controls" style="display:none;">
-            <!-- Virtual Joystick (left side) -->
+            <!-- D-Pad / Joystick (left side) -->
             <div id="joystick-zone">
                 <div id="joystick-base">
                     <div id="joystick-thumb"></div>
                 </div>
             </div>
-            <!-- Action Buttons (right side) -->
-            <div id="touch-action-buttons">
-                <button id="touch-jump-btn" class="touch-btn">JUMP</button>
-                <button id="touch-place-btn" class="touch-btn touch-btn-primary">PLACE</button>
-                <button id="touch-remove-btn" class="touch-btn touch-btn-danger">REMOVE</button>
-                <button id="touch-sail-btn" class="touch-btn touch-btn-gold" style="display:none;">SAIL!</button>
-            </div>
-            <!-- Sailing touch buttons (shown during sailing) -->
-            <div id="touch-sail-controls" style="display:none;">
-                <button id="touch-accel-btn" class="touch-btn touch-btn-primary">SPEED UP</button>
-                <button id="touch-brake-btn" class="touch-btn touch-btn-danger">BRAKE</button>
+
+            <!-- Right side: JUMP button (big, always visible) + action row -->
+            <div id="touch-right-side">
+                <!-- Big jump button like a game controller A button -->
+                <button id="touch-jump-btn" class="touch-btn-round touch-btn-jump">JUMP</button>
+
+                <!-- Build mode buttons -->
+                <div id="touch-build-actions">
+                    <button id="touch-remove-btn" class="touch-btn touch-btn-danger">REMOVE</button>
+                    <button id="touch-sail-btn" class="touch-btn touch-btn-gold">SAIL!</button>
+                </div>
+
+                <!-- Sail mode buttons -->
+                <div id="touch-sail-controls" style="display:none;">
+                    <button id="touch-accel-btn" class="touch-btn touch-btn-speed">SPEED UP</button>
+                    <button id="touch-brake-btn" class="touch-btn touch-btn-danger">BRAKE</button>
+                </div>
             </div>
         </div>
 
